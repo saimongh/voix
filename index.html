@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>French Audio Generator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'><path fill='%234caf50' d='M192 0C139 0 96 43 96 96V256c0 53 43 96 96 96s96-43 96-96V96c0-53-43-96-96-96zM64 216c0-13.3-10.7-24-24-24s-24 10.7-24 24v40c0 89.1 66.2 162.7 152 174.4V464H120c-13.3 0-24 10.7-24 24s10.7 24 24 24h72 72c13.3 0 24-10.7 24-24s-10.7-24-24-24H216V430.4c85.8-11.7 152-85.3 152-174.4V216c0-13.3-10.7-24-24-24s-24 10.7-24 24v40c0 70.7-57.3 128-128 128s-128-57.3-128-128V216z'/></svg>" type="image/svg+xml">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, blinkmacsystemfont, 'segoe ui', sans-serif; background: #0d0d0d; color: #f2f2f2; padding: 40px 20px; font-weight: 300; line-height: 1.6; }
+.wrap { max-width: 560px; margin: 0 auto; }
+h1 { font-size: 1.65rem; font-weight: 300; letter-spacing: 0.05em; text-transform: lowercase; margin-bottom: 5px; }
+.sub { color: #888; font-size: 0.85rem; margin-bottom: 32px; font-weight: 300; }
+.card { background: #151515; border: 1px solid #262626; border-radius: 12px; padding: 24px; margin-bottom: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.step-label { font-size: 0.68rem; font-weight: 500; text-transform: uppercase; letter-spacing: 1.1px; color: #777; margin-bottom: 16px; }
+label { display: block; font-size: 0.83rem; font-weight: 300; color: #aaa; margin-bottom: 6px; }
+input[type=password], input[type=text], select, textarea {
+  width: 100%; padding: 12px 14px; border: 1px solid #333;
+  border-radius: 8px; font-size: 0.88rem; font-family: inherit; font-weight: 300;
+  outline: none; background: #0d0d0d; color: #f2f2f2; transition: border-color 0.2s;
+}
+input:focus, select:focus, textarea:focus { border-color: #555; background: #111; }
+.btn { display: inline-flex; align-items: center; gap: 7px; background: #262626; color: #f2f2f2; border: 1px solid #333; padding: 11px 20px; font-size: 0.85rem; font-weight: 300; border-radius: 8px; cursor: pointer; font-family: inherit; transition: all .2s ease; }
+.btn:hover:not(:disabled) { background: #333; border-color: #444; transform: translateY(-1px); }
+.btn:disabled { background: #151515; color: #555; border-color: #222; cursor: not-allowed; }
+.btn-outline { background: transparent; color: #eaeaea; border: 1px solid #333; }
+.btn-outline:hover { background: #1c1c1c; border-color: #444; }
+.btn-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+.hint { font-size: 0.78rem; color: #777; margin-top: 12px; line-height: 1.5; }
+.hint strong { color: #aaa; font-weight: 500; }
+.progress-track { background: #262626; border-radius: 99px; height: 3px; margin: 14px 0 10px; overflow: hidden; }
+.progress-fill { background: #4caf50; height: 100%; border-radius: 99px; width: 0%; transition: width 0.4s ease; }
+.progress-meta { display: flex; justify-content: space-between; font-size: 0.78rem; color: #888; }
+.current-phrase { font-family: 'georgia', serif; font-size: 1.1rem; color: #ccc; margin-top: 10px; font-style: italic; min-height: 24px; }
+.done-msg { font-size: 0.88rem; color: #aaa; line-height: 1.6; margin-bottom: 18px; }
+.folder-list { font-size: 0.78rem; color: #777; margin-top: 10px; line-height: 1.8; font-family: monospace; }
+.hidden { display: none !important; }
+.error { color: #c0392b; font-size: 0.82rem; margin-top: 10px; }
+
+@media (max-width: 600px) {
+  .wrap { margin: 15px auto; }
+  body { padding: 15px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>French Audio Generator</h1>
+  <div class="sub">Generates an MP3 for every French phrase via ElevenLabs, bundled into one ZIP.</div>
+
+  <div class="card" id="s1">
+    <div class="step-label">Step 1 - Connect</div>
+    <label for="keyInput">ElevenLabs API Key</label>
+    <input type="password" id="keyInput" placeholder="sk_...">
+    <div class="btn-row">
+      <button class="btn" onclick="connect()">Connect →</button>
+    </div>
+    <div class="hint">
+      Find your key at <strong>elevenlabs.io → Profile → API Key</strong>.<br>
+      This run uses ~2,100 characters - well within the free tier (10k/month).
+    </div>
+    <div class="error hidden" id="s1err"></div>
+  </div>
+
+  <div class="card hidden" id="s2">
+    <div class="step-label">Step 2 - Pick a Voice</div>
+    <label for="voiceSel">Voice</label>
+    <select id="voiceSel" onchange="selectedVoiceId = this.value;"></select>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="previewVoice()">▶ Preview</button>
+      <button class="btn" onclick="generateAll()">Generate All Phrases →</button>
+    </div>
+    <div class="hint">Use <strong>Preview</strong> to hear the voice say a sample French phrase before committing. Any voice works - the Multilingual v2 model handles French well.</div>
+    <div class="error hidden" id="s2err"></div>
+  </div>
+
+  <div class="card hidden" id="s5">
+    <div class="step-label">Or - Generate Custom Phrases</div>
+    <label for="singleText">French phrase</label>
+    <input type="text" id="singleText" placeholder="Je vais au marché." oninput="syncFilename()">
+    <label for="singleName" style="margin-top:14px;">File name</label>
+    <input type="text" id="singleName" placeholder="00_je_vais_au_marche">
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="previewSingle()">▶ Preview</button>
+      <button class="btn" onclick="generateSingle()">Generate MP3</button>
+    </div>
+    <div class="hint">File name defaults to <strong>00_</strong> + the phrase, but feel free to rename it.</div>
+    <div class="error hidden" id="s5err"></div>
+    <div id="s5done" class="hidden" style="margin-top:14px; font-size:0.85rem; color:#888;">✓ Ready - <span id="s5fname" style="color:#ccc;"></span></div>
+  </div>
+
+  <div class="card hidden" id="s6">
+    <div class="step-label">Or - Generate Multiple Custom Phrases</div>
+    <label for="bulkText">Paste phrases, one per line</label>
+    <textarea id="bulkText" rows="4" placeholder="Je vais au marché.&#10;On se voit demain ?&#10;J’ai oublié mon parapluie."
+      style="resize:vertical;"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="buildBulkList()">Add to List ↓</button>
+    </div>
+    <div id="bulkList" style="margin-top:18px;"></div>
+    <div class="btn-row hidden" id="bulkActionRow" style="margin-top:18px;">
+      <button class="btn" onclick="generateBulk()">Generate & Zip All</button>
+    </div>
+    <div class="error hidden" id="s6err"></div>
+  </div>
+
+  <div class="card hidden" id="s3">
+    <div class="step-label">Step 3 - Generating Audio</div>
+    <div class="progress-track"><div class="progress-fill" id="pFill"></div></div>
+    <div class="progress-meta">
+      <span id="pCount">0 / 70</span>
+      <span id="pPct">0%</span>
+    </div>
+    <div class="current-phrase" id="pPhrase">Starting...</div>
+  </div>
+
+  <div class="card hidden" id="s4">
+    <div class="step-label">Done ✓</div>
+    <div class="done-msg">All phrases generated. Your ZIP is organized into three folders - one per time of day, with numbered MP3 files ready to drop into your flashcard app.</div>
+    <div class="folder-list">
+      📁 morning/ &nbsp;&nbsp;(29 files)<br>
+      📁 afternoon/ (23 files)<br>
+      📁 evening/ &nbsp;&nbsp;(18 files)
+    </div>
+    <div class="btn-row" style="margin-top:20px;">
+      <button class="btn" id="dlBtn">⬇ Download french_audio.zip</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let key = '', zipBlob = null;
+
+const data = {
+  morning: [
+    "T’as bien dormi ?","J’ai bien dormi.","J’ai pas assez dormi.",
+    "J’ai fait des rêves bizarres.","T’as déjà brossé les dents ?",
+    "Je vais me brosser les dents là.","Tu vas te doucher ?",
+    "Je me suis douché hier soir.","Je me douche le soir.",
+    "Je suis en train de m’habiller.","Je fais ma routine skincare là.",
+    "Je prépare mon sac là.","T’amènes quoi ?",
+    "J’amène mon ordi, mes carnets, une batterie externe et mes écouteurs.",
+    "Tu vas manger chez toi ce matin ?","Probablement pas.","Y’a rien chez moi.",
+    "Je vais prendre quelque chose dehors.","Tu vas où ?",
+    "Je marche vers l’arrêt de bus.","Je prends le bus.","Je suis dans le métro.",
+    "Je prends le E.","Je prends le F.","Je vais au boulot.","Je vais chez moi.",
+    "Je vais à BKB.","Je vais au cabinet.","Je vais au bureau."
+  ],
+  afternoon: [
+    "Je viens de descendre du métro.","Je viens d’arriver à la salle.",
+    "Je viens d’arriver au cabinet.","Tu vas faire quoi là ?",
+    "Je vais m’entraîner là.","Je vais grimper là.",
+    "Mon shift commence bientôt.","Mon shift commence à quatre heures.",
+    "Mon shift commence à quatre heures et demie.","L’escalade, ça va ?",
+    "L’escalade se passe bien.","Je suis encore un peu blessé.",
+    "Tu te sens comment ?","Je me sens bien.","Je me sens fatigué.",
+    "J’ai des courbatures.","T’es blessé ?","C’est juste mon doigt.",
+    "C’est juste mon poignet.","T’as envie de manger quoi ?",
+    "T’as mangé ?","Je vais manger.","Je veux aller au food court."
+  ],
+  evening: [
+    "Tu rentres chez toi ?","Je rentre chez moi là.","Je rentre bientôt.",
+    "Tu prends quelle ligne ?","Je prends le E.","Je prends le F.","Je prends le 7.",
+    "Merci pour ton boulot aujourd’hui.","Merci pour ton boulot.",
+    "J’ai trop hâte de dormir.","Je suis crevé.","J’ai envie de rentrer.",
+    "Belle session !","Merci d’être venu.","Rentre bien !",
+    "Bonne continuation !","Bonne soirée !","À demain !"
+  ]
+};
+
+const total = Object.values(data).flat().length;
+
+const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9\s]/g,'').trim()
+  .replace(/\s+/g,'_').slice(0,38);
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+const showErr = (id, msg) => {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+};
+
+async function tts(text, voiceId) {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+    })
+  });
+  if (!res.ok) throw new Error(`ElevenLabs error ${res.status}`);
+  return res.arrayBuffer();
+}
+
+async function connect() {
+  key = document.getElementById('keyInput').value.trim();
+  if (!key) return showErr('s1err', 'Please paste your API key first.');
+  document.getElementById('s1err').classList.add('hidden');
+  try {
+    const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': key }
+    });
+    if (!res.ok) throw new Error('Invalid key or network issue.');
+    const { voices } = await res.json();
+    const sel = document.getElementById('voiceSel');
+    sel.innerHTML = voices
+      .sort((a,b) => a.name.localeCompare(b.name))
+      .map(v => {
+        const lang = v.labels?.language || v.labels?.accent || '';
+        const tag = lang ? ` - ${lang}` : '';
+        return `<option value="${v.voice_id}">${v.name}${tag}</option>`;
+      }).join('');
+    document.getElementById('s1').classList.add('hidden');
+    document.getElementById('s2').classList.remove('hidden');
+    document.getElementById('s5').classList.remove('hidden');
+    document.getElementById('s6').classList.remove('hidden');
+    selectedVoiceId = sel.value;
+  } catch(e) {
+    showErr('s1err', 'Connection failed: ' + e.message);
+  }
+}
+
+async function previewVoice() {
+  const vid = document.getElementById('voiceSel').value;
+  document.getElementById('s2err').classList.add('hidden');
+  try {
+    const buf = await tts("Je vais au boulot. Belle session !", vid);
+    new Audio(URL.createObjectURL(new Blob([buf], { type:'audio/mpeg' }))).play();
+  } catch(e) {
+    showErr('s2err', 'Preview failed: ' + e.message);
+  }
+}
+
+async function generateAll() {
+  const vid = document.getElementById('voiceSel').value;
+  document.getElementById('s2').classList.add('hidden');
+  document.getElementById('s3').classList.remove('hidden');
+
+  const zip = new JSZip();
+  let done = 0;
+
+  for (const [section, phrases] of Object.entries(data)) {
+    const folder = zip.folder(section);
+    for (let i = 0; i < phrases.length; i++) {
+      const phrase = phrases[i];
+      document.getElementById('pPhrase').textContent = `“${phrase}”`;
+      try {
+        const buf = await tts(phrase, vid);
+        folder.file(`${String(i+1).padStart(2,'0')}_${slug(phrase)}.mp3`, buf);
+      } catch(e) {
+        console.warn('Skipped:', phrase, e.message);
+      }
+      done++;
+      const pct = Math.round(done/total*100);
+      document.getElementById('pFill').style.width = pct+'%';
+      document.getElementById('pCount').textContent = `${done} / ${total}`;
+      document.getElementById('pPct').textContent = `${pct}%`;
+      await wait(350);
+    }
+  }
+
+  zipBlob = await zip.generateAsync({ type:'blob', mimeType:'application/zip' });
+  document.getElementById('s3').classList.add('hidden');
+  document.getElementById('s4').classList.remove('hidden');
+  document.getElementById('dlBtn').onclick = () => {
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(zipBlob),
+      download: 'french_audio.zip'
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+}
+
+let selectedVoiceId = '';
+let singleBuf = null;
+
+function syncFilename() {
+  const text = document.getElementById('singleText').value;
+  document.getElementById('singleName').value = text ? `00_${slug(text)}` : '';
+  document.getElementById('s5done').classList.add('hidden');
+}
+
+async function previewSingle() {
+  const text = document.getElementById('singleText').value.trim();
+  document.getElementById('s5err').classList.add('hidden');
+  if (!text) return showErr('s5err', 'Type a French phrase first.');
+  try {
+    const buf = await tts(text, selectedVoiceId);
+    new Audio(URL.createObjectURL(new Blob([buf], { type:'audio/mpeg' }))).play();
+  } catch(e) {
+    showErr('s5err', 'Preview failed: ' + e.message);
+  }
+}
+
+async function generateSingle() {
+  const text = document.getElementById('singleText').value.trim();
+  let name = document.getElementById('singleName').value.trim();
+  document.getElementById('s5err').classList.add('hidden');
+  document.getElementById('s5done').classList.add('hidden');
+  if (!text) return showErr('s5err', 'Type a French phrase first.');
+  if (!name) name = `00_${slug(text)}`;
+  if (!name.toLowerCase().endsWith('.mp3')) name += '.mp3';
+
+  try {
+    singleBuf = await tts(text, selectedVoiceId);
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([singleBuf], { type:'audio/mpeg' })),
+      download: name
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    document.getElementById('s5fname').textContent = name;
+    document.getElementById('s5done').classList.remove('hidden');
+  } catch(e) {
+    showErr('s5err', 'Generation failed: ' + e.message);
+  }
+}
+
+let bulkItems = [];
+
+function buildBulkList() {
+  const raw = document.getElementById('bulkText').value;
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  document.getElementById('s6err').classList.add('hidden');
+  if (!lines.length) return showErr('s6err', 'Paste at least one phrase first.');
+
+  lines.forEach(text => {
+    bulkItems.push({ text, name: `00_${slug(text)}` });
+  });
+  document.getElementById('bulkText').value = '';
+  renderBulkList();
+}
+
+function renderBulkList() {
+  const container = document.getElementById('bulkList');
+  const actionRow = document.getElementById('bulkActionRow');
+
+  if (!bulkItems.length) {
+    container.innerHTML = '';
+    actionRow.classList.add('hidden');
+    return;
+  }
+
+  container.innerHTML = bulkItems.map((item, i) => `
+    <div style="display:flex; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #262626;">
+      <div style="flex:1; min-width:0;">
+        <div style="font-size:0.83rem; color:#ccc; margin-bottom:5px;">${item.text}</div>
+        <input type="text" value="${item.name}" oninput="bulkItems[${i}].name = this.value"
+          style="width:100%; padding:7px 10px; border:1px solid #333; border-radius:6px; font-size:0.78rem; font-family:monospace; outline:none; background:#0d0d0d; color:#f2f2f2;">
+      </div>
+      <button onclick="previewBulkItem(${i})" title="Preview"
+        style="background:none; border:1px solid #333; border-radius:6px; width:32px; height:32px; cursor:pointer; font-size:0.8rem; flex-shrink:0; color:#eaeaea;">▶</button>
+      <button onclick="removeBulkItem(${i})" title="Remove"
+        style="background:none; border:1px solid #333; border-radius:6px; width:32px; height:32px; cursor:pointer; font-size:0.8rem; flex-shrink:0; color:#c0392b;">✕</button>
+    </div>
+  `).join('');
+
+  actionRow.classList.remove('hidden');
+}
+
+function removeBulkItem(i) {
+  bulkItems.splice(i, 1);
+  renderBulkList();
+}
+
+async function previewBulkItem(i) {
+  document.getElementById('s6err').classList.add('hidden');
+  try {
+    const buf = await tts(bulkItems[i].text, selectedVoiceId);
+    new Audio(URL.createObjectURL(new Blob([buf], { type:'audio/mpeg' }))).play();
+  } catch(e) {
+    showErr('s6err', 'Preview failed: ' + e.message);
+  }
+}
+
+async function generateBulk() {
+  document.getElementById('s6err').classList.add('hidden');
+  if (!bulkItems.length) return;
+
+  const zip = new JSZip();
+  const actionRow = document.getElementById('bulkActionRow');
+  const origLabel = actionRow.querySelector('button').textContent;
+
+  for (let i = 0; i < bulkItems.length; i++) {
+    const { text, name } = bulkItems[i];
+    actionRow.querySelector('button').textContent = `Generating ${i+1} / ${bulkItems.length}...`;
+    try {
+      const buf = await tts(text, selectedVoiceId);
+      const fname = name.toLowerCase().endsWith('.mp3') ? name : name + '.mp3';
+      zip.file(fname, buf);
+    } catch(e) {
+      console.warn('Skipped:', text, e.message);
+    }
+    await wait(350);
+  }
+
+  actionRow.querySelector('button').textContent = origLabel;
+  const blob = await zip.generateAsync({ type:'blob', mimeType:'application/zip' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'custom_phrases.zip'
+  });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+  bulkItems = [];
+  renderBulkList();
+}
+</script>
+</body>
+</html>
